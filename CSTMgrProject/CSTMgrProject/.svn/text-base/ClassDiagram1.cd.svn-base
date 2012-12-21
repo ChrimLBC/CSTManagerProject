@@ -1,0 +1,73 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1" MembersFormat="FullSignature">
+  <Class Name="CSTMgrProject.ActiveDirUtilities">
+    <Position X="0.5" Y="4" Width="3" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAABAA=</HashCode>
+      <FileName>ActiveDirUtilities.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="CSTMgrProject.CrPanel">
+    <Position X="12" Y="0.5" Width="3.25" />
+    <AssociationLine Name="ErrorChecking" Type="CSTMgrProject.ErrorChecking">
+      <MemberNameLabel ManuallyPlaced="true">
+        <Position X="0.903" Y="0.062" />
+      </MemberNameLabel>
+    </AssociationLine>
+    <TypeIdentifier>
+      <HashCode>AFkAgUyUhCIgBAiAA0ApAGAGM4QAACBSA4AAF0AQBJA=</HashCode>
+      <FileName>CrPanel.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsAssociation>
+      <Property Name="ErrorChecking" />
+    </ShowAsAssociation>
+  </Class>
+  <Class Name="CSTMgrProject.ErrorChecking">
+    <Position X="7.25" Y="10" Width="2.5" />
+    <TypeIdentifier>
+      <HashCode>AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAFAAAA=</HashCode>
+      <FileName>ErrorChecking.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="CSTMgrProject.MainWindow">
+    <Position X="0.5" Y="0.5" Width="2.5" />
+    <TypeIdentifier>
+      <HashCode>AACAAgAAACEAAQAAAACAAAACAAAAAAAAAAAAAAAABAA=</HashCode>
+      <FileName>MainWindow.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsAssociation>
+      <Property Name="PanelMgr" />
+    </ShowAsAssociation>
+  </Class>
+  <Class Name="CSTMgrProject.PanelMgr">
+    <Position X="4.75" Y="0.5" Width="5.75" />
+    <TypeIdentifier>
+      <HashCode>AYACIIADACABAAUILIEFAAJRCEIEAAEAAFARQAADmIA=</HashCode>
+      <FileName>PanelMgr.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsAssociation>
+      <Property Name="CrPanel" />
+      <Property Name="ActiveDirUtilities" />
+    </ShowAsAssociation>
+  </Class>
+  <Class Name="CSTMgrProject.Program">
+    <Position X="17.5" Y="6.5" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAA=</HashCode>
+      <FileName>Program.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="CSTMgrProject.Properties.Resources" Collapsed="true">
+    <Position X="17.25" Y="2" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAABEAAAAQAAAAAAAAAAAAAAAIA=</HashCode>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="CSTMgrProject.Properties.Settings" Collapsed="true">
+    <Position X="17.5" Y="3.75" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAIAAAAAABAAAAAAAAAAAAAAA=</HashCode>
+    </TypeIdentifier>
+  </Class>
+  <Font Name="Segoe UI" Size="9" />
+</ClassDiagram>

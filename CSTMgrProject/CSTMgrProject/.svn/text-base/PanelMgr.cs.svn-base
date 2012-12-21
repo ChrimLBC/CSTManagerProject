@@ -1,0 +1,936 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.DirectoryServices;
+using System.DirectoryServices.ActiveDirectory;
+using Microsoft.Office.Interop.Word;
+using System.Collections;
+using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Windows.Forms;
+using System.DirectoryServices.AccountManagement;
+using DiskQuotaTypeLibrary;
+
+
+
+namespace CSTMgrProject
+{
+    /// <summary>
+    /// Panel manager class - manages retrieving information
+    /// from the panels and performing actions using the 
+    /// values from the panel.
+    /// </summary>
+    public class PanelMgr
+    {
+        #region Attributes
+        private string delUserOU;
+        private string delDC;
+        private DelPanel dp;// = new DelPanel();
+        /// <summary>
+        /// String that contains the server UNC path \\domain\
+        /// </summary>
+        private string serverPath;
+        /// <summary>
+        /// String that contains the share name
+        /// </summary>
+        private string share;
+        /// <summary>
+        /// String that contains username/password output to write to a file
+        /// </summary>
+        private string output = "";
+        /// <summary>
+        /// Queue of users before writing to the document
+        /// </summary>
+        private Queue<string> users = new Queue<string>();
+        /// <summary>
+        /// Instance of the current CrPanel
+        /// </summary>
+        private CrPanel crm;
+        /// <summary>
+        /// Number to start users at.
+        /// e.g. 
+        /// </summary>
+        private int iFirstUser;
+        /// <summary>
+        /// OU to put the user in
+        /// </summary>
+        private string sUserOU;
+        /// <summary>
+        /// Group to put the user in.
+        /// </summary>
+        private string sUserGroup;
+        /// <summary>
+        /// Domain controller to create the users under
+        /// </summary>
+        private string sDC;
+        /// <summary>
+        /// Number of users to create
+        /// </summary>
+        private int iNumUsers;
+        /// <summary>
+        /// Home drive to assign to user created
+        /// </summary>
+        private string sHomeDrive;
+        /// <summary>
+        /// Home directory string
+        /// </summary>
+        private string sHomeDir;
+        /// <summary>
+        /// String of users profile path
+        /// </summary>
+        private string sProfilePath;
+        /// <summary>
+        /// Password for the user created
+        /// </summary>
+        private string sPassword;
+        /// <summary>
+        /// String with the user prefix
+        /// </summary>
+        private string sUserPrefix;
+        /// <summary>
+        /// Number for the password length
+        /// </summary>
+        private int iPasswdLength = 0;
+        #endregion
+
+        #region Properties (For Testing Purposes)
+        public string DelDC
+        {
+            get { return delDC; }
+        }
+
+        public string DelUserOU
+        {
+            get { return delUserOU; }
+        }
+        /// <summary>
+        /// Property for the UNC server path \\domain\
+        /// </summary>
+        public string ServerPath
+        {
+            get { return serverPath; }
+        }
+        /// <summary>
+        /// Property for the name of the share.
+        /// </summary>
+        public string Share
+        {
+            get { return share; }
+        }
+        /// <summary>
+        /// Property for password length
+        /// </summary>
+        public int PasswdLength
+        {
+            get { return iPasswdLength; }
+        }
+        /// <summary>
+        /// Property for user prefix
+        /// </summary>
+        public string UserPrefix
+        {
+            get { return sUserPrefix; }
+        }
+        /// <summary>
+        /// Property for password
+        /// </summary>
+        public string Password
+        {
+            get { return Password; }
+        }
+        /// <summary>
+        /// Property for the profile path
+        /// </summary>
+        public string ProfilePath
+        {
+            get { return sProfilePath; }
+        }
+        /// <summary>
+        /// Property for the home directory
+        /// </summary>
+        public string HomeDir
+        {
+            get { return sHomeDir; } 
+        }
+        /// <summary>
+        /// Property for the Home Drive
+        /// </summary>
+        public string HomeDrive
+        {
+            get { return sHomeDrive; }
+        }
+        /// <summary>
+        /// Property for the number of users to create
+        /// </summary>
+        public int NumUsers
+        {
+            get { return iNumUsers; }
+        }
+        /// <summary>
+        /// Property for the domain controller
+        /// </summary>
+        public string DC
+        {
+            get { return sDC; }
+        }
+        /// <summary>
+        /// Property for the group
+        /// </summary>
+        public string UserGroup
+        {
+            get { return sUserGroup; }
+        }
+        /// <summary>
+        /// Property for the user OU
+        /// </summary>
+        public string UserOU
+        {
+            get { return sUserOU; }
+        }
+        /// <summary>
+        /// Property for the first user to create
+        /// </summary>
+        public int FirstUser
+        {
+            get { return iFirstUser; }
+        }
+
+        #endregion
+
+        #region Create Users
+        /// <summary>
+        /// Convert the friendly domain to LDAP domain string
+        /// </summary>
+        /// <param name="friendlyDomainName">Domain name to convert to LDAP homeDirPath
+        /// e.g. project.com</param>
+        /// <returns>LDAP homeDirPath of the domain passed in
+        /// e.g. dc=project,dc=com</returns>
+        public static string FriendlyDomainToLdapDomain(string friendlyDomainName)
+        {
+            //Define the return ldapPath
+            string ldapPath = null;
+            try
+            {
+                //Create a directory context of our domain with the name passed in
+                DirectoryContext objContext = new DirectoryContext(
+                    DirectoryContextType.Domain, friendlyDomainName);
+                //Get a domain object from the DirectoryContext created
+                Domain objDomain = Domain.GetDomain(objContext);
+                //Convert the domain to a DirectoryEntry object(allows us to get homeDirPath)
+                DirectoryEntry de = objDomain.GetDirectoryEntry();
+                //Get the homeDirPath and set to our return string
+                ldapPath = de.Path;
+                //Get the homeDirPath
+                ldapPath = ldapPath.Substring(8 + friendlyDomainName.Length);
+            }
+            //If error occurred
+            catch (DirectoryServicesCOMException e)
+            {
+                //Display the error in ldapPath
+                ldapPath = e.Message.ToString();
+            }
+            //Return the ldap Path
+            return ldapPath;
+        }
+
+        /// <summary>
+        /// Add a user to a group
+        /// </summary>
+        /// <param name="userDn">Distinguished name of the user to add 
+        /// to a group.</param>
+        /// <param name="groupDn">Distinguished name of the group to add the
+        /// user to.</param>
+        public void AddToGroup(string userDn, string groupDn)
+        {
+            try
+            {
+                //Create DirectoryEntry of the groupDN passed in
+                DirectoryEntry dirEntry = new DirectoryEntry(groupDn);
+                //Add the user to the "member" properties
+                dirEntry.Properties["member"].Add(userDn);
+                //Commit the changes
+                dirEntry.CommitChanges();
+                //Close the entry
+                dirEntry.Close();
+            }
+            //If error Occurred
+            catch (System.DirectoryServices.DirectoryServicesCOMException E)
+            {
+                MessageBox.Show(E.Message);
+            }
+        }
+
+        #region setUserProperties
+        public void setPanel(CrPanel cp)
+        {
+            crm = cp;
+
+        }
+        public void setDelPanel(DelPanel dp)
+        {
+            this.dp = dp;
+        }
+        public void setDelVars(DelPanel dp)
+        {
+            setDelPanel(dp);
+            setServerPath();
+            setShare();
+            setDelDC();
+            setDelUserOU();
+
+        }
+
+        
+        /// <summary>
+        /// Set all our local variables to values from our CrPanel
+        /// </summary>
+        /// <param name="cp">Current CrPanel we're working with</param>
+        public void setVariables(CrPanel cp)
+        {
+            //Set the CrPanel variable
+            setPanel(cp);
+            //Set number of users variable
+            setNumUsers();
+            //Set first user int variable
+            setFirstUser();
+            //Set user ou variable
+            setUserOU();
+            //Set DC variable
+            setDomainController();
+            //Set password variable
+            setPassword();
+            //Set home drive variable
+            setHomeDrive();
+            //Set user prefix variable
+            setUserPrefix();
+            //Set group variable
+            setGroup();
+            //Set home directory variable
+            setHomeDir();
+            //set profile path variable
+            setProfilePath();
+            //Set password length variable
+            setPasswordLength();
+        }
+
+        /// <summary>
+        /// This method will grant full control and ownership
+        /// of the directory passed in to the userName/newUser
+        /// variables passed in
+        /// </summary>
+        /// <param name="directoryPath">Path to the directory</param>
+        /// <param name="userName">Username string</param>
+        /// <param name="newUser">DirectoryEntry reference to the user that
+        /// will take ownership of the directory</param>
+        private void setHomeDirectory(string directoryPath, string userName, 
+            DirectoryEntry newUser)
+        {
+            //Define a boolean that ensures the following is done
+            bool folderCreated = false;
+
+
+            //While the folder was still not created
+            while (!folderCreated)
+            {
+                try
+                {
+                    // get current ACL
+                    //TODO Fix user permissions, they don't allow users to create stuff
+                    DirectoryInfo dInfo = new DirectoryInfo(directoryPath);
+                    DirectorySecurity dSecurity = dInfo.GetAccessControl();
+
+                    // Add full control for the user and set owner to them
+                    //Get the IdentityReference to our user
+                    IdentityReference newUserRef = new NTAccount(sDC + @"\" + userName);
+                    //Set the owner
+                    dSecurity.SetOwner(newUserRef);
+                    
+                    //Set the permissions to full control
+                    FileSystemAccessRule permissions =
+                       new FileSystemAccessRule(newUserRef, FileSystemRights.FullControl, AccessControlType.Allow);
+                    
+                    dSecurity.AddAccessRule(permissions);
+
+                    // Set the new access settings.
+                    dInfo.SetAccessControl(dSecurity);
+                    //Sucessfully set permissions
+                    folderCreated = true;
+                    //Commit changes
+                    newUser.CommitChanges();
+                }
+                //If error occurred
+                catch (System.Security.Principal.IdentityNotMappedException)
+                {
+                    //Continue on
+                    Console.Write(".");
+                }
+                //If we caught a different exception
+                catch (Exception ex)
+                {
+                    // other exception caught so not problem with user delay as 
+                    // commented above
+                    Console.WriteLine("Exception caught:" + ex.ToString());
+                }
+            }
+        }
+        /// <summary>
+        /// Set the properties of the user
+        /// </summary>
+        /// <param name="newUser">DirectoryEntry reference to the user</param>
+        /// <param name="userName">Username of the user</param>
+        /// <param name="i">Current user number (cst209 where i = 209)</param>
+        private void setUserProperties(DirectoryEntry newUser, string userName,
+            int i, string extLetter)
+        {
+            
+            string oGUID = string.Empty;
+            //Set ldapPath to user ou
+            string ldapPath = sUserOU;
+            string connectionPrefix = ldapPath;
+            //Directory entry of our user ou
+            DirectoryEntry dirEntry = new DirectoryEntry(connectionPrefix);
+            //Set generate password variable
+            bool genPassword = false;
+            //Set the account name
+            newUser.Properties["samAccountName"].Value = userName;
+            //Create the home directory
+            Directory.CreateDirectory(sHomeDir + extLetter + i);
+            //Directory.CreateDirectory(sProfilePath + extLetter + i);
+            DirectoryInfo dInfo = new DirectoryInfo(sProfilePath + extLetter + i);
+            
+            
+            //Set the home directory of the user
+            newUser.Properties["homeDirectory"].Add((sHomeDir + extLetter + i));
+            //Set the roaming profile path property of the user
+            newUser.Properties["profilePath"].Add((sProfilePath + extLetter + i));
+            //Set the home drive of teh user
+            newUser.Properties["homeDrive"].Add(sHomeDrive);
+            //Commit changes
+            newUser.CommitChanges();
+
+            oGUID = newUser.Guid.ToString();
+            //If the password field was left blank
+            if (sPassword == "")
+            {
+                int passwdLength = 5;
+                if (iPasswdLength > 0)
+                {
+                    passwdLength = iPasswdLength;
+                }
+                //Generate a 5 letter password
+                sPassword = PanelMgr.passGen(passwdLength);
+                //Note that we are now generating password
+                //for all users
+                genPassword = true;
+            }
+
+            //Commit changes
+            newUser.CommitChanges();
+            //Set the home directory permissions
+            setHomeDirectory(sHomeDir + extLetter + i, userName, newUser);
+            //Set the profile path permissions
+            //setHomeDirectory(sProfilePath + extLetter + i, userName, newUser);
+            //Set the password
+            newUser.Invoke("SetPassword", new object[] { sPassword });
+            //Commit changes
+            newUser.CommitChanges();
+            //Close the objects
+            dirEntry.Close();
+            newUser.Close();
+            //Add the user to the group(must be after we close the objects to work!!!)
+            AddToGroup("CN=" + userName + "," + sUserOU.Substring(7), sUserGroup);
+            //Output with username/password that will be written to password file
+            output += "\"" + userName + "\",\"" + sPassword + "\"" + "\r\n";
+
+
+            
+            //Reset the password to blank if we're generating password
+            if (genPassword)
+            {
+                //Reset sPAssword variable
+                sPassword = "";
+            }
+            //Make the password expire to force the user to change the password at next logon
+            PrincipalContext pe = new PrincipalContext(System.DirectoryServices.AccountManagement.ContextType.Domain);
+            UserPrincipal up = UserPrincipal.FindByIdentity(pe, userName);
+            up.ExpirePasswordNow();
+        }
+        #endregion
+        /// <summary>
+        /// Method to create a set of extension accounts
+        /// </summary>
+        /// <param name="cp">Current CrPanel we're working with</param>
+        public void createExtUsers(CrPanel cp)
+        {
+
+            //Set our variables
+            setVariables(cp);
+            //Check if the extension has an appended number
+            int appendNum = -1;
+            try
+            {
+                appendNum = int.Parse("" + sUserPrefix.ElementAt(sUserPrefix.Length - 1));
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine("Must have user prefix ext#");
+            }
+            try
+            {
+                //Verify that the EXT# prefix is included
+                if (sUserPrefix.ToUpper().IndexOf("EXT") > -1
+                    &&  appendNum >= 0)
+                {
+                    crm.CreateExtButton.Enabled = false;
+                    string oGUID = string.Empty;
+                    string ldapPath = sUserOU;
+                    string connectionPrefix = ldapPath;
+
+                    //Define the allowed letters that we will use
+                    string sAllowedChars = "abcdefghjkmnpqrstuvwxyz";
+                    //Get our OU directoryEntry object
+                    DirectoryEntry dirEntry = new DirectoryEntry(connectionPrefix);
+                    //Foreach letter in the allowed characters defined above
+                    for (int k = 0; k < sAllowedChars.Length; k++)
+                    {
+                        this.output = "";
+                        
+                        //Set the current extension letter
+                        char currExtLetter = sAllowedChars.ElementAt(k);
+                        //Loop through the number of users per letter
+                        for (int i = iFirstUser; i < (iFirstUser + iNumUsers); i++)
+                        {
+                            //Define the userName
+                            string userName = sUserPrefix + currExtLetter + i;
+                            //Get the DirectoryEntry for our new user
+                            DirectoryEntry newUser = dirEntry.Children.Add
+                                ("CN=" + userName, "user");
+                            //Set all the user's properties
+                            setUserProperties(newUser, userName, i, currExtLetter.ToString());
+                        }
+                        //Create the file and append the output to the file
+                        System.IO.StreamWriter file = new System.IO.StreamWriter(this.sUserPrefix + currExtLetter + ".txt", false);
+                        file.WriteLine(output);
+                        users.Enqueue(output);
+                        //Close the file
+                        file.Close();
+                    }
+                    MessageBox.Show("Users have been created Successfully");
+                    
+                }
+                else
+                {
+                    MessageBox.Show("Extension accounts must have the ext# prefix");
+                }
+            }
+            catch (System.DirectoryServices.DirectoryServicesCOMException E)
+            {
+                MessageBox.Show(E.Message);
+
+            }
+        }
+
+        /// <summary>
+        /// Method to create Active Directory Users
+        /// </summary>
+        /// <param name="cp">Reference to get information from Properties</param>
+        public void createUsers(CrPanel cp)
+        {
+            setVariables(cp);
+            users = new Queue<string>();
+            ProgressWindow pwProgress = new ProgressWindow("Creating Users...", iNumUsers);
+
+            
+
+            try
+            {
+                crm.CreateButton.Enabled = false;
+                string oGUID = string.Empty;
+                string ldapPath = sUserOU;
+                //Set hte connection prefix
+                string connectionPrefix = ldapPath;
+                //Get a directoryEntry object from the OU
+                DirectoryEntry dirEntry = new DirectoryEntry(connectionPrefix);
+                //Reset the output string
+                this.output = "";
+
+                //Creates a progress bar window for user to see how creation is progressing
+                pwProgress.Show();
+                pwProgress.SetPercentDone(0);
+
+                //Foreach number of users defined
+                for (int i = iFirstUser; i < (iFirstUser +  iNumUsers); i++)
+                {
+                    pwProgress.SetPercentDone(i-iFirstUser);
+                    //Define the username
+                    string userName = sUserPrefix + i;
+                    //Define DirectoryEntry obejct for the new user
+                    DirectoryEntry newUser = dirEntry.Children.Add
+                        ("CN=" + userName, "user");
+                    //Set the user's properties
+                    setUserProperties(newUser, userName, i, "");
+                }
+                //close progress bar window
+                pwProgress.Close();
+                //Create the file and append the output to the file
+                System.IO.StreamWriter file = new System.IO.StreamWriter(this.sUserPrefix + ".txt", false);
+                file.WriteLine(output);
+                users.Enqueue(output);
+                //Close the file
+                file.Close();
+                //Write files to word doc, not included because server currently doesn't have Word
+                //WriteUserDoc();
+                MessageBox.Show("Users have been created Successfully");
+            }
+            catch (System.DirectoryServices.DirectoryServicesCOMException E)
+            {
+                MessageBox.Show(E.Message);
+                //close progress bar window
+                pwProgress.Close();
+
+            }
+            
+        }
+        #endregion
+
+        #region Set variables
+        /// <summary>
+        /// Set the first user variable
+        /// </summary>
+        private void setFirstUser()
+        {
+            iFirstUser = int.Parse(crm.FirstUser.Text);
+        }
+        /// <summary>
+        /// Set the password variable
+        /// </summary>
+        private void setPassword()
+        {
+            sPassword = crm.Password.Text;
+        }
+        /// <summary>
+        /// Set the user OU homeDirPath
+        /// </summary>
+        private void setUserOU()
+        {
+            sUserOU = crm.OUPath;
+        }
+        /// <summary>
+        /// Set the group homeDirPath variable
+        /// </summary>
+        private void setGroup()
+        {
+            sUserGroup = crm.GroupPath;
+        }
+        /// <summary>
+        /// Set the number of users variable
+        /// </summary>
+        private void setNumUsers()
+        {
+            iNumUsers = int.Parse(crm.NumUsers.Text);
+        }
+        /// <summary>
+        /// Set the domain controller variable
+        /// </summary>
+        private void setDomainController()
+        {
+            sDC = crm.DC.Items[crm.DC.SelectedIndex].ToString();
+        }
+        /// <summary>
+        /// Set home drive variables
+        /// </summary>
+        private void setHomeDrive()
+        {
+            sHomeDrive = crm.HomeDrive.Text;
+        }
+        /// <summary>
+        /// Set home directory variable
+        /// </summary>
+        private void setHomeDir()
+        {
+            sHomeDir += crm.HomeDir.Text + crm.HomeDirExt.Text.Substring(0, crm.HomeDirExt.Text.Length - 3);
+        }
+        /// <summary>
+        /// sets the profile path of the user
+        /// </summary>
+        private void setProfilePath()
+        {
+            sProfilePath = crm.ProfilePath.Text + crm.ProfileExt.Text.Substring(0, crm.ProfileExt.Text.Length - 3);
+        }
+        /// <summary>
+        /// Set the password length variable
+        /// </summary>
+        private void setPasswordLength()
+        {
+            if (crm.passwordLength.Text.Length > 0)
+            {
+                iPasswdLength = int.Parse(crm.passwordLength.Text);
+            }
+        }
+        /// <summary>
+        /// Set the user prefix variable
+        /// </summary>
+        private void setUserPrefix()
+        {
+            sUserPrefix = crm.UserPrefix.Text;
+        }
+        /// <summary>
+        /// Set the server path
+        /// </summary>
+        private void setServerPath()
+        {
+            serverPath = dp.ServerPath.Text.Trim();
+            if (serverPath.ElementAt(serverPath.Length - 1).ToString() != "\\")
+            {
+                serverPath += "\\";
+            }
+        }
+        /// <summary>
+        /// Set the share name
+        /// </summary>
+        private void setShare()
+        {
+            share = dp.Share.Items[dp.Share.SelectedIndex].ToString();
+        }
+        /// <summary>
+        /// Set the delete panel user OU text
+        /// </summary>
+        private void setDelUserOU()
+        {
+            if (dp.UserOU.SelectedIndex > -1)
+            {
+                this.delUserOU = dp.UserOU.Items[dp.UserOU.SelectedIndex].ToString();
+            }
+        }
+        /// <summary>
+        /// Set the delete panel domain controller text
+        /// </summary>
+        private void setDelDC()
+        {
+            if (dp.DC.SelectedIndex > -1)
+            {
+                this.delDC = dp.DC.Items[dp.DC.SelectedIndex].ToString();
+            }
+        }
+
+        private void createPasswordFile()
+        {
+            //To be implemented
+        }
+        private void createFromCSV()
+        {
+            //To be implemented
+        }
+        private void runLoginScripts()
+        {
+            //To be implemented
+        }
+        private void setAcctExp()
+        {
+            //To be implemented
+        }
+        #endregion
+
+        #region Delete Users
+        public void deleteUsers(ArrayList alUsers)
+        {
+            try
+            {
+
+                //int i = 0;
+                //ProgressWindow pgWindow = new ProgressWindow("Deleting Users...", alUsers.Count);
+                //pgWindow.Show();
+                //pgWindow.SetPercentDone(i);
+                
+                foreach (Object o in alUsers)
+                {
+                    //pgWindow.SetPercentDone(i);
+                    //i++;
+                    DirectoryEntry de = (DirectoryEntry)o;
+                    //de.DeleteTree();
+                    //de.Close();
+                    DirectoryEntry ou = de.Parent;
+                    ou.Children.Remove(de);
+                    ou.CommitChanges();
+                }
+                //pgWindow.Close();
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show("There was a problem while deleting\n " + e.Message);
+            }
+
+        }
+
+        private void deleteQuota()
+        {
+            
+        }
+
+        private void deleteHomeProfile()
+        {
+
+        }
+        #endregion
+
+        #region Modify Users
+        protected void modifyUsers()
+        {
+
+        }
+
+        private void bulkPasswordReset()
+        {
+
+        }
+        #endregion
+
+        #region Password Generator
+        /// <summary>
+        /// Generate a random password with the indicated length
+        /// </summary>
+        /// <param name="PasswordLength">Length of the password</param>
+        /// <returns>Random password</returns>
+        public static string passGen(int PasswordLength)
+        {
+            //Allowed characters
+            string _allowedChars = "abcdefghjkmnpqrstuvwxyzABCDEFGH­JKMNPQRSTUVWXYZ";
+            //Define a random variable
+            Random rand = new Random();
+            //Define the allowed character count
+            int allowedCharCount = _allowedChars.Length;
+            //Make an array of chars with the password length
+            char[] chars = new char[PasswordLength];
+            
+            //Do this password length amount of tiems
+            for (int i = 0; i < PasswordLength; i++)
+            {
+                //Get a random number between 0-1
+                double randNum = rand.NextDouble();
+                //Times random seed by the allowed character count
+                int iRandNum =(int) (randNum * allowedCharCount);
+                //Set the character in our array to our new generated
+                //letter
+                chars[i] = _allowedChars[iRandNum];
+            }
+            //Return the password
+            return new string(chars);
+
+        }
+
+        #endregion
+
+        #region Not Implemented Yet
+        //private Array getADGroups()
+        //{
+        //   // string[] groups = ActiveDirUtilities.getGroups();
+        //    string[] ret = { "rawr" };
+        //    return ret;
+        //}
+
+        //private Array getOU()
+        //{
+        //   // string[] OUs = ActiveDirUtilities.getOU();
+        //    string[] ret = { "rawr" };
+        //    return ret;
+        //}
+
+        //private Array getDomains()
+        //{
+        //    //string[] domains = ActiveDirUtilities.getDomains();
+        //    string[] ret = { "rawr" };
+        //    return ret;
+        //}
+
+        //public static string FriendlyDomainToLdapDomain()
+        //{
+        //    string ldapPath = "";
+        //    try
+        //    {
+        //        DirectoryEntry root = new DirectoryEntry("LDAP://RootDSE");
+        //        string defaultNamingContext = root.Properties["defaultNamingContext"].Value.ToString();
+
+        //        ldapPath = defaultNamingContext;
+
+        //        DirectoryEntry topLevel = new DirectoryEntry("LDAP://" + defaultNamingContext);
+        //        ldapPath = topLevel.Path.ToString();
+        //        ldapPath = ldapPath.Substring(7, ldapPath.Length - 7);
+
+        //    }
+        //    catch (DirectoryServicesCOMException e)
+        //    {
+        //        ldapPath = e.Message.ToString();
+        //    }
+        //    return ldapPath;
+        //}
+        #endregion
+
+        #region Write to Word Document
+        /*
+        /// <summary>
+        /// Function to write all the user names and passwords to a Microsoft Word document
+        /// </summary>
+        /// <param name="output">Word document "users.docx"</param>
+        private void WriteUserDoc()
+        {
+            //starts up an instance of Microsoft Word
+            Microsoft.Office.Interop.Word.Application ap = new Microsoft.Office.Interop.Word.Application();
+            Document doc = null;
+            object fileName = @"users.docx";
+            try
+            {
+                //Checks to see if users.docx is already created
+                try
+                {
+                    doc = ap.Documents.Open(fileName, Visible: true, ReadOnly: false);
+                    doc.Activate();
+                }
+                catch (Exception e)//users.docx was not found, creating one
+                {
+                    doc = ap.Documents.Add();
+                }
+
+                //moves to the end of the file
+                ap.GoForward();
+                //gets an insertion point for writing text
+                Selection sel = ap.Selection;
+                //makes sure there was a selection made
+                if (sel != null)
+                {
+
+                    //loops through writing username/password combos to word document
+                    while (users.Count > 0)
+                    {
+                        sel.TypeText(users.Dequeue());
+                        sel.TypeParagraph();
+                    }
+                    //saves the word document
+                    doc.SaveAs(fileName);
+                }
+                else
+                {
+                    //Error message if file was unable to be opened
+                    Console.WriteLine("Unable to open file");
+                }
+                //closes word document
+                ap.Documents.Close();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Instance of word open\n " + ex.Message); // Could be that the document is already open (/) or Word is in Memory(?)
+            }
+            finally
+            {
+                //quits application
+                ((_Application)ap).Quit(SaveChanges: false, OriginalFormat: false, RouteDocument: false);
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(ap);
+            }
+        }
+         * */
+        #endregion
+
+
+    }
+}
